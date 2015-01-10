@@ -3,8 +3,8 @@ var height = 720;
 var deaths = 0;
 var lvl = 2;
 var amountLevels = 3;
-var finishedTexts = ["That was easy...", "Too easy... For real now, lets see if you can finish this",
-				  "Congrats, you finished all levels!"];
+var finishedTexts = ["That was easy...", "Too easy...\nFor real now, lets see if you can finish next level.",
+                     "Congrats, you finished all levels!"];
 
 
 var game = new Phaser.Game(width, height, Phaser.AUTO, 'gameDiv');

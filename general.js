@@ -26,6 +26,13 @@ Lvl.prototype.init = function (playerX, playerY)
     // If 'p' gets pressed call pauseGame();.
     game.input.keyboard.addKey(Phaser.Keyboard.P).onDown.add(this.pauseGame, this);
 
+    // Create emitter
+    this.emitter = game.add.emitter(0, 0, 15);
+    // Set the 'pixel' image for the particles
+    this.emitter.makeParticles('pixel');
+    this.emitter.setYSpeed(-400, 200);
+    this.emitter.setXSpeed(-400, 200);
+    this.emitter.gravity = 750;
 
     // Disable browser spacebar action
     game.input.keyboard.addKeyCapture(Phaser.Keyboard.SPACEBAR);
@@ -44,9 +51,16 @@ Lvl.prototype.init = function (playerX, playerY)
     }
 }
 
+Lvl.prototype.startEmitter = function ()
+{
+    this.emitter.x = this.player.x;
+    this.emitter.y = this.player.y;
+    this.emitter.start(true, 1000, null, 30);
+}
 
 Lvl.prototype.respawnPlayer = function ()
 {
+    this.startEmitter();
     this.updateDeaths();
 
     this.player.body.velocity.x = 0;
@@ -62,7 +76,7 @@ Lvl.prototype.respawnPlayer = function ()
 }
 
 Lvl.prototype.restartLvl = function ()
-{
+{    
     this.updateDeaths();
     game.state.restart();
 }
@@ -83,12 +97,12 @@ Lvl.prototype.pauseGame = function ()
     }
 }
 
-Lvl.prototype.startWallGravity = function (player, wall)
+Lvl.prototype.startWallGravity = function (player, ground)
 {
     if(player.body.touching.down)
     {
         game.tweens.removeFrom(wall);
-        wall.body.gravity.y = -100;
+        ground.body.gravity.y = -100;
     }
 }
 
@@ -310,13 +324,39 @@ Lvl.prototype.createWorld = function ()
     this.map.createFromObjects("Objects", 2, "item", 0, true, false, this.itemsGroup);
     this.itemsGroup.setAll('body.immovable', true);
 
+    // Create saws
+    this.sawGroup = game.add.group();
+    this.sawGroup.enableBody = true;
+    this.map.createFromObjects("Objects", 3, "saw", 0, true, false, this.sawGroup);
+    this.sawGroup.setAll('body.immovable', true);
+    this.sawGroup.forEach(function(saw)
+    {
+        saw.anchor.setTo(0.5, 0.5);
+    }, this);
+    // Start saws animation
+    this.initSaws();
+
     //console.log(this.itemsGroup.getAt(0).visible);
+}
+
+Lvl.prototype.initSaws = function ()
+{
+    this.sawGroup.forEach(function(saw)
+    {
+        saw.toX = parseInt(saw.toX);
+        saw.toY = parseInt(saw.toY);
+        saw.idleTime = parseInt(saw.idleTime);
+        saw.runTime = parseInt(saw.runTime);
+
+        saw.tween = game.add.tween(saw).to({x: saw.x, y: saw.y}, saw.idleTime/2).to({x: saw.x, y: saw.y, angle: 45*45*45}, saw.idleTime/2).to({x: saw.toX, y: saw.toY, angle: 60*60*60}, saw.runTime).loop().start();
+    
+    }, this);
 }
 
 Lvl.prototype.addCollisions = function ()
 {
     game.physics.arcade.collide(this.player, this.wall);
-    //game.physics.arcade.collide(this.player, this.itemsGroup, this.collecItem, null, this);
+    game.physics.arcade.collide(this.player, this.sawGroup, this.respawnPlayer, null, this);
 }
 
 Lvl.prototype.checkItemCollision = function ()
@@ -329,6 +369,18 @@ Lvl.prototype.checkItemCollision = function ()
         }
     }, this);
 }
+
+Lvl.prototype.checkSawCollision = function ()
+{
+    this.sawGroup.forEach(function(saw)
+    {
+        if(Phaser.Rectangle.intersects(this.player.body, saw.body))
+        {
+            this.respawnPlayer();
+        }
+    }, this);
+}
+
 
 Lvl.prototype.update = function ()
 {
@@ -350,6 +402,13 @@ Lvl.prototype.update = function ()
 
     // Check item collision (without physics)
     this.checkItemCollision();
+
+    /*Manual collision check for saws
+    * This is needed because automatic collision check does not work.
+    * Seems like a bug in phaser. When player stands still and collides
+    * with a running tween, collision does not get detected.
+    */
+    this.checkSawCollision();
 
     // Move player
     this.movePlayer();

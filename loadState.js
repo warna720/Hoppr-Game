@@ -14,6 +14,8 @@ var loadState = {
             game.load.image('item', 'assets/kebab.png');
             game.load.image('tile', 'assets/tile.png');
             game.load.image('ground', 'assets/ground.png');
+            game.load.image('saw', 'assets/saw.png');
+            game.load.image('pixel', 'assets/pixel.png');
 
             // Levels
             for (n = 1; n <= amountLevels; ++n)
