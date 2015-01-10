@@ -1,8 +1,9 @@
-function Lvl()
-{
+function Lvl() {}
 
+Lvl.prototype.init = function (playerX, playerY)
+{
     // Create sprite for player and animations
-    this.player = game.add.sprite(game.world.centerX, game.world.centerY/2, 'player');
+    this.player = game.add.sprite(playerX, playerY, 'player');
     this.player.animations.add('right', [1, 2], 8, true);
     this.player.animations.add('left', [3, 4], 8, true);
     this.player.anchor.setTo(0.5, 0.5);
@@ -41,10 +42,8 @@ function Lvl()
         game.scale.pageAlignVertically = true;
         game.scale.setScreenSize(true);
     }
-
-    // Amount of items not yet collected
-    this.itemsToCollect = 0;
 }
+
 
 Lvl.prototype.respawnPlayer = function ()
 {
@@ -55,6 +54,11 @@ Lvl.prototype.respawnPlayer = function ()
 
     this.player.x = this.player.spawnX;
     this.player.y = this.player.spawnY;
+
+    this.itemsGroup.forEach(function(item)
+    {
+        item.exists = true;
+    }, this);
 }
 
 Lvl.prototype.restartLvl = function ()
@@ -70,6 +74,7 @@ Lvl.prototype.pauseGame = function ()
         game.paused = true;
         this.pausedLabel = game.add.text(game.world.centerX, game.world.centerY, "Paused",
         { font: '30px Arial', fill: '#ffffff' });
+        this.pausedLabel.anchor.setTo(0.5, 0.5);
     }
     else
     {
@@ -80,14 +85,16 @@ Lvl.prototype.pauseGame = function ()
 
 Lvl.prototype.startWallGravity = function (player, wall)
 {
-    // If player is not touching with feet
-    if(!player.body.touching.down)
+    if(player.body.touching.down)
     {
-        return;
+        game.tweens.removeFrom(wall);
+        wall.body.gravity.y = -100;
     }
+}
 
-    game.tweens.removeFrom(wall);
-    wall.body.gravity.y = -100;
+Lvl.prototype.collecItem = function (item)
+{
+    item.exists = false;
 }
 
 Lvl.prototype.updateDeaths = function ()
@@ -103,26 +110,30 @@ Lvl.prototype.getDeathsText = function ()
 
 Lvl.prototype.lvlDone = function ()
 {
-    return this.items.itemsToCollect == 0;
+    var done = true;
+
+    this.itemsGroup.forEach(function(item)
+    {
+        if(item.exists)
+        {
+            done = false;
+        }
+    }, this);
+
+    return done;
 }
 
 Lvl.prototype.movePlayer = function ()
 {
-    var drainV = 10;
     var turnV = 20;
-    if (this.player.body.velocity.x != 0)
+
+    if (this.cursor.left.isDown)
     {
-        turnV = 15;
-    }
-    // If the left arrow key is pressed
-    if (this.cursor.left.isDown) {
-        // Move the player to the left
         this.player.body.velocity.x += -turnV;
         this.player.animations.play('left');
     }
-    // If the right arrow key is pressed
-    else if (this.cursor.right.isDown) {
-        // Move the player to the right
+    else if (this.cursor.right.isDown)
+    {
         this.player.body.velocity.x += turnV;
         this.player.animations.play('right');
     }
@@ -131,21 +142,83 @@ Lvl.prototype.movePlayer = function ()
         this.player.animations.stop();
         this.player.frame = 0;
 
-        if (this.player.body.velocity.x < 0)
-        {
-            this.player.body.velocity.x += drainV;
-        }
-        else if (this.player.body.velocity.x > 0)
-        {
-            this.player.body.velocity.x -= drainV;
-        }
+        this.drainVelocity();
+    }
 
-        if (this.player.body.velocity.x == 10 || this.player.body.velocity.x == -10)
+
+    this.correctVelocityLimit();
+
+
+    if(this.touchingWall())
+    {
+        this.timeSinceWallTouch = game.time.time;
+
+        this.wallSlide();
+    }
+
+    if (this.player.inWorld &&  this.cursor.up.isDown)
+    {
+        if (this.player.body.onFloor() || this.player.body.touching.down)
         {
-            this.player.body.velocity.x = 0;
+            this.player.lastJumpTime = game.time.time;
+            this.player.body.velocity.y += -250;
+        }
+        else if (this.canSideJump())
+        {
+            this.sideJump();
+
+            this.player.lastJumpTime = null;
+            this.player.timeSinceWallTouch = null;
+            this.leftBlocked = false;
+            this.rightBlocked = false;
+
+        }
+        else if (game.time.time - this.player.lastJumpTime < 200)
+        {
+            this.player.body.velocity.y += -8;
         }
     }
 
+}
+
+Lvl.prototype.passedSideJumpY = function ()
+{
+    var yCoord = this.player.y - this.player.sideJumpedY;
+
+    return yCoord < -50 || yCoord > 30;
+}
+
+Lvl.prototype.passedSideJumpX = function ()
+{
+    var xCoord = this.player.x - this.player.sideJumpedX;
+
+    return Math.abs(xCoord) > 40;
+}
+
+Lvl.prototype.canSideJump = function ()
+{
+    return ((this.player.body.blocked.left || this.player.body.blocked.right) &&
+            (this.cursor.left.isDown || this.cursor.right.isDown)) || 
+            (this.leftBlocked || this.rightBlocked) && 
+            ((this.touchedWallX - this.player.x) < 5);
+}
+
+Lvl.prototype.sideJump = function ()
+{
+    this.player.body.velocity.y = -300;
+
+    if (this.leftBlocked)
+    {
+        this.player.body.velocity.x = 350;
+    }
+    else if (this.rightBlocked)
+    {
+        this.player.body.velocity.x = -350;
+    }
+}
+
+Lvl.prototype.correctVelocityLimit = function ()
+{
     if (this.player.body.velocity.x < -350)
     {
         this.player.body.velocity.x = -350;
@@ -154,30 +227,130 @@ Lvl.prototype.movePlayer = function ()
     {
         this.player.body.velocity.x = 350;
     }
+}
 
-    // If the up arrow key is pressed and the player is touching the ground
-    if (this.player.inWorld &&  this.cursor.up.isDown)
+Lvl.prototype.touchingWall = function ()
+{
+    if (this.player.body.blocked.left && this.cursor.left.isDown)
     {
-        if (this.player.body.onFloor() || this.player.body.touching.down)
-        {
-            // Move the player upward (jump)
-            this.player.body.velocity.y += -320;
-        }
-        else if ((this.player.body.blocked.left || this.player.body.blocked.right) && 
-                 !this.player.sideJumped)
-        {
-            this.player.body.velocity.y = -250;
-            this.player.sideJumped = true;
-        }
+        this.leftBlocked = true;
+    }
+    else if (this.player.body.blocked.right && this.cursor.right.isDown)
+    {
+        this.rightBlocked = true;
     }
 
-    if (!this.player.body.blocked.left && !this.player.body.blocked.right)
+    if (this.player.body.blocked.left || this.player.body.blocked.right)
     {
-        this.resetSideJumped();
+        this.touchedWallX = this.player.x;
+    }
+
+    if (game.time.time - this.timeSinceWallTouch > 250)
+    {
+        this.leftBlocked = false;
+        this.rightBlocked = false;
+    }
+
+    return this.player.body.blocked.left || this.player.body.blocked.right;
+}
+
+Lvl.prototype.wallSlide = function ()
+{
+    if (this.player.body.velocity.y > 10)
+    {
+        this.player.body.velocity.y = 80;
     }
 }
 
-Lvl.prototype.resetSideJumped = function ()
+Lvl.prototype.drainVelocity = function ()
 {
-    this.player.sideJumped = false;
+    var drainV = 10;
+
+    if (this.player.body.velocity.x < 0)
+    {
+        this.player.body.velocity.x += drainV;
+    }
+    else if (this.player.body.velocity.x > 0)
+    {
+        this.player.body.velocity.x -= drainV;
+    }
+
+    if (this.player.body.velocity.x < 10 && this.player.body.velocity.x > -10)
+    {
+        this.player.body.velocity.x = 0;
+    }
+}
+
+Lvl.prototype.createWorld = function ()
+{
+    // Create the tilemap
+    this.map = game.add.tilemap('lvl' + lvl);
+
+    // Add the tileset to the map
+    this.map.addTilesetImage('tile');
+
+    // Create the layer, by specifying the name of the Tiled layer
+    this.wall = this.map.createLayer('Ground');
+
+    // Set the world size to match the size of the layer
+    this.wall.resizeWorld();
+
+    this.map.setCollisionBetween(1, 10000, 1, this.wall, false)
+
+
+    // Add player
+    this.playerGroup = game.add.group();
+    //this.playerGroup.enableBody = true;
+    this.map.createFromObjects("Objects", 1, "", 0, true, false, this.playerGroup);
+    this.player = this.playerGroup.getAt(0);
+
+    // Create items
+    this.itemsGroup = game.add.group();
+    this.itemsGroup.enableBody = true;
+    this.map.createFromObjects("Objects", 2, "item", 0, true, false, this.itemsGroup);
+    this.itemsGroup.setAll('body.immovable', true);
+
+    //console.log(this.itemsGroup.getAt(0).visible);
+}
+
+Lvl.prototype.addCollisions = function ()
+{
+    game.physics.arcade.collide(this.player, this.wall);
+    //game.physics.arcade.collide(this.player, this.itemsGroup, this.collecItem, null, this);
+}
+
+Lvl.prototype.checkItemCollision = function ()
+{
+    this.itemsGroup.forEach(function(item)
+    {
+        if(Phaser.Rectangle.intersects(this.player.body, item.body))
+        {
+            this.collecItem(item);
+        }
+    }, this);
+}
+
+Lvl.prototype.update = function ()
+{
+    // Finished lvl
+    if(this.lvlDone())
+    {
+        ++lvl;
+        game.state.start('transition');
+    }
+
+    // Out of bounds
+    if (!this.player.inWorld)
+    {
+        this.respawnPlayer();
+    }
+
+    // Add collisions
+    this.addCollisions();
+
+    // Check item collision (without physics)
+    this.checkItemCollision();
+
+    // Move player
+    this.movePlayer();
 }
