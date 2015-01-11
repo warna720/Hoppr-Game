@@ -1,9 +1,9 @@
 function Lvl() {}
 
-Lvl.prototype.init = function (playerX, playerY)
+Lvl.prototype.init = function ()
 {
     // Create sprite for player and animations
-    this.player = game.add.sprite(playerX, playerY, 'player');
+    this.player = game.add.sprite(this.player.x, this.player.y, 'player');
     this.player.animations.add('right', [1, 2], 8, true);
     this.player.animations.add('left', [3, 4], 8, true);
     this.player.anchor.setTo(0.5, 0.5);
@@ -69,10 +69,8 @@ Lvl.prototype.respawnPlayer = function ()
     this.player.x = this.player.spawnX;
     this.player.y = this.player.spawnY;
 
-    this.itemsGroup.forEach(function(item)
-    {
-        item.exists = true;
-    }, this);
+    this.respawnItems();
+    this.respawnDestructibleBlocks();
 }
 
 Lvl.prototype.restartLvl = function ()
@@ -159,7 +157,6 @@ Lvl.prototype.movePlayer = function ()
         this.drainVelocity();
     }
 
-
     this.correctVelocityLimit();
 
 
@@ -211,10 +208,10 @@ Lvl.prototype.passedSideJumpX = function ()
 
 Lvl.prototype.canSideJump = function ()
 {
-    return ((this.player.body.blocked.left || this.player.body.blocked.right) &&
+    return  (this.touchingSides() &&
             (this.cursor.left.isDown || this.cursor.right.isDown)) || 
-            (this.leftBlocked || this.rightBlocked) && 
-            ((this.touchedWallX - this.player.x) < 5);
+            (Math.abs(this.touchedWallX - this.player.x) < 30 &&
+            (this.leftBlocked || this.rightBlocked));
 }
 
 Lvl.prototype.sideJump = function ()
@@ -243,29 +240,46 @@ Lvl.prototype.correctVelocityLimit = function ()
     }
 }
 
+
+Lvl.prototype.touchingLeft = function ()
+{
+    return this.player.body.blocked.left || this.player.body.touching.left;
+}
+
+Lvl.prototype.touchingRight = function ()
+{
+    return this.player.body.blocked.right || this.player.body.touching.right;
+}
+
+Lvl.prototype.touchingSides = function ()
+{
+    return this.touchingLeft() || this.touchingRight();
+}
+
 Lvl.prototype.touchingWall = function ()
 {
-    if (this.player.body.blocked.left && this.cursor.left.isDown)
+    if (this.touchingLeft() && this.cursor.left.isDown)
     {
         this.leftBlocked = true;
     }
-    else if (this.player.body.blocked.right && this.cursor.right.isDown)
+    else if (this.touchingRight() && this.cursor.right.isDown)
     {
         this.rightBlocked = true;
     }
 
-    if (this.player.body.blocked.left || this.player.body.blocked.right)
+    if (this.touchingSides())
     {
         this.touchedWallX = this.player.x;
+        this.touchedWallY = this.player.y;
     }
 
-    if (game.time.time - this.timeSinceWallTouch > 250)
+    if (game.time.time - this.timeSinceWallTouch > 500)
     {
         this.leftBlocked = false;
         this.rightBlocked = false;
     }
 
-    return this.player.body.blocked.left || this.player.body.blocked.right;
+    return this.touchingSides();
 }
 
 Lvl.prototype.wallSlide = function ()
@@ -303,60 +317,184 @@ Lvl.prototype.createWorld = function ()
     // Add the tileset to the map
     this.map.addTilesetImage('tile');
 
-    // Create the layer, by specifying the name of the Tiled layer
+    // Create the layer by name of the Tiled layer
     this.wall = this.map.createLayer('Ground');
 
     // Set the world size to match the size of the layer
     this.wall.resizeWorld();
 
-    this.map.setCollisionBetween(1, 10000, 1, this.wall, false)
-
+    // Allow collison for ground layer
+    this.map.setCollision(1);
 
     // Add player
-    this.playerGroup = game.add.group();
-    //this.playerGroup.enableBody = true;
-    this.map.createFromObjects("Objects", 1, "", 0, true, false, this.playerGroup);
-    this.player = this.playerGroup.getAt(0);
+    this.createPlayer();
 
     // Create items
+    this.createItems();
+
+    this.createDestructibleBlocks();
+
+    // Create saws
+    this.createSaws();
+
+    // Start saws animation
+    this.initSaws();
+
+    // Create platforms
+    this.createPlatforms();
+
+    // Start platform tweens
+    this.initPlatforms();
+}
+
+Lvl.prototype.createPlayer = function ()
+{
+    this.playerGroup = game.add.group();
+    this.playerGroup.enableBody = true;
+    this.map.createFromObjects("Objects", 1, "", 0, true, false, this.playerGroup);
+    this.player = this.playerGroup.getAt(0);
+}
+
+Lvl.prototype.createItems = function ()
+{
     this.itemsGroup = game.add.group();
     this.itemsGroup.enableBody = true;
     this.map.createFromObjects("Objects", 2, "item", 0, true, false, this.itemsGroup);
     this.itemsGroup.setAll('body.immovable', true);
+}
 
-    // Create saws
-    this.sawGroup = game.add.group();
-    this.sawGroup.enableBody = true;
-    this.map.createFromObjects("Objects", 3, "saw", 0, true, false, this.sawGroup);
-    this.sawGroup.setAll('body.immovable', true);
-    this.sawGroup.forEach(function(saw)
+Lvl.prototype.createDestructibleBlocks = function ()
+{
+    this.destructibleBlocksGroup = game.add.group();
+    this.destructibleBlocksGroup.enableBody = true;
+    this.map.createFromObjects("Objects", 4, "destructibleBlock", 0, true, false, this.destructibleBlocksGroup);
+    this.destructibleBlocksGroup.setAll('body.immovable', true);
+}
+
+Lvl.prototype.destroyBlock = function (player, block)
+{
+    if (!block.destroyed)
+    {
+        block.destroyed = true;
+        var anim = block.animations.add('destroyBlock', [1, 2], 10);
+        
+        anim.onComplete.add(function()
+        {
+            this.exists = false;
+        }, block);
+
+        block.animations.play('destroyBlock');
+    }
+}
+
+Lvl.prototype.createPlatforms = function ()
+{
+    this.platformsGroup = game.add.group();
+    this.platformsGroup.enableBody = true;
+    this.map.createFromObjects("Objects", 5, "platform", 0, true, false, this.platformsGroup);
+    this.platformsGroup.setAll('body.immovable', true);
+    this.platformsGroup.forEach(function(platform)
+    {
+        platform.spawnX = platform.x;
+        platform.spawnY = platform.y;
+        platform.init = true;
+    }, this);
+}
+
+Lvl.prototype.initPlatforms = function ()
+{
+    this.platformsGroup.forEach(function(platform)
+    {
+        if (platform.init)
+        {
+            platform.toX = parseInt(platform.toX);
+            platform.toY = parseInt(platform.toY);
+            platform.runTime = parseInt(platform.runTime);
+
+            platform.tween = game.add.tween(platform)
+                            .to({x: platform.toX - platform.width, 
+                                 y: platform.toY - platform.height}, 
+                                 platform.runTime)
+                            .to({x: platform.x, 
+                                 y: platform.y}, 
+                                 platform.runTime)
+                            .loop().start();
+
+            platform.init = false;
+        }
+    }, this);
+}
+
+Lvl.prototype.raisePlatform = function (player, platform)
+{
+    game.tweens.removeFrom(platform);
+    platform.body.gravity.y = -100;
+}
+
+Lvl.prototype.checkPlatforms = function ()
+{
+    this.platformsGroup.forEach(function(platform)
+    {
+        if (!platform.inWorld)
+        {
+            platform.body.gravity.y = 0;
+            platform.body.velocity.y = 0;
+
+            platform.x = platform.spawnX;
+            platform.y = platform.spawnY;
+
+            platform.init = true;
+            this.initPlatforms();
+        }
+    }, this);
+}
+
+Lvl.prototype.createSaws = function ()
+{
+    this.sawsGroup = game.add.group();
+    this.sawsGroup.enableBody = true;
+    this.map.createFromObjects("Objects", 3, "saw", 0, true, false, this.sawsGroup);
+    this.sawsGroup.setAll('body.immovable', true);
+    this.sawsGroup.forEach(function(saw)
     {
         saw.anchor.setTo(0.5, 0.5);
     }, this);
-    // Start saws animation
-    this.initSaws();
-
-    //console.log(this.itemsGroup.getAt(0).visible);
 }
 
 Lvl.prototype.initSaws = function ()
 {
-    this.sawGroup.forEach(function(saw)
+    this.sawsGroup.forEach(function(saw)
     {
         saw.toX = parseInt(saw.toX);
         saw.toY = parseInt(saw.toY);
         saw.idleTime = parseInt(saw.idleTime);
         saw.runTime = parseInt(saw.runTime);
 
-        saw.tween = game.add.tween(saw).to({x: saw.x, y: saw.y}, saw.idleTime/2).to({x: saw.x, y: saw.y, angle: 45*45*45}, saw.idleTime/2).to({x: saw.toX, y: saw.toY, angle: 60*60*60}, saw.runTime).loop().start();
+        saw.tween = game.add.tween(saw)
+                    .to({x: saw.x, y: saw.y}, saw.idleTime/2)
+                    .to({x: saw.x, y: saw.y, angle: 45*45*45}, saw.idleTime/2)
+                    .to({x: saw.toX, y: saw.toY, angle: 60*60*60}, saw.runTime)
+                    .loop().start();
     
     }, this);
 }
 
-Lvl.prototype.addCollisions = function ()
+Lvl.prototype.respawnItems = function ()
 {
-    game.physics.arcade.collide(this.player, this.wall);
-    game.physics.arcade.collide(this.player, this.sawGroup, this.respawnPlayer, null, this);
+    this.itemsGroup.forEach(function(item)
+    {
+        item.reset(item.x, item.y);
+    }, this);
+}
+
+Lvl.prototype.respawnDestructibleBlocks = function ()
+{
+    this.destructibleBlocksGroup.forEach(function(block)
+    {
+        block.reset(block.x, block.y);
+        block.loadTexture('destructibleBlock')
+        block.destroyed = false;
+    }, this);
 }
 
 Lvl.prototype.checkItemCollision = function ()
@@ -372,7 +510,7 @@ Lvl.prototype.checkItemCollision = function ()
 
 Lvl.prototype.checkSawCollision = function ()
 {
-    this.sawGroup.forEach(function(saw)
+    this.sawsGroup.forEach(function(saw)
     {
         if(Phaser.Rectangle.intersects(this.player.body, saw.body))
         {
@@ -381,6 +519,12 @@ Lvl.prototype.checkSawCollision = function ()
     }, this);
 }
 
+Lvl.prototype.addCollisions = function ()
+{
+    game.physics.arcade.collide(this.player, this.wall);
+    game.physics.arcade.collide(this.player, this.destructibleBlocksGroup, this.destroyBlock);//, null, this);
+    game.physics.arcade.collide(this.player, this.platformsGroup, this.raisePlatform);//, null, this);
+}
 
 Lvl.prototype.update = function ()
 {
@@ -392,10 +536,17 @@ Lvl.prototype.update = function ()
     }
 
     // Out of bounds
+
+    // Player
     if (!this.player.inWorld)
     {
         this.respawnPlayer();
     }
+
+    // Platforms
+    this.checkPlatforms();
+
+
 
     // Add collisions
     this.addCollisions();

@@ -13,9 +13,10 @@ var loadState = {
             game.load.spritesheet('player', 'assets/player.png', 20, 20);
             game.load.image('item', 'assets/kebab.png');
             game.load.image('tile', 'assets/tile.png');
-            game.load.image('ground', 'assets/ground.png');
+            game.load.image('platform', 'assets/platform.png');
             game.load.image('saw', 'assets/saw.png');
             game.load.image('pixel', 'assets/pixel.png');
+            game.load.spritesheet('destructibleBlock', 'assets/destructibleBlock.png', 20, 20)
 
             // Levels
             for (n = 1; n <= amountLevels; ++n)
@@ -27,6 +28,6 @@ var loadState = {
 
         },
         create: function() {
-            game.state.start('skeleton');
+            game.state.start('menu');
     }
 };

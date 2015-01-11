@@ -1,0 +1,6 @@
+gids
+1 = spawn
+2 = items
+3 = saw
+4 = blocks
+5 = platform

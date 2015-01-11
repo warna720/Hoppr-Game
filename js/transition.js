@@ -8,15 +8,11 @@ var transitionState = {
         this.transitionTime = game.time.time;
     },
 
-    create: function() {
-        ;
-    },
-
     update: function()
     {
     	if (game.time.time - this.transitionTime > 3000)
     	{
-    		if (lvl-2 > finishedTexts.length)
+    		if (lvl > amountLevels)
     		{
     			game.state.start('menu');
     		}
