@@ -14,7 +14,8 @@ var transitionState = {
     	{
     		if (lvl > amountLevels)
     		{
-                lvl = 1;
+    			lvl = 1;
+    			deaths = 0;
     			game.state.start('menu');
     		}
     		else
